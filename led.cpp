@@ -10,9 +10,10 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/cm3/systick.h>
+#include <libopencm3/stm32/timer.h>
 #include <string>
 
-
+uint16_t read_adc_naiive(uint8_t channel);
 #define USART_CONSOLE USART1
 
 
@@ -38,6 +39,33 @@ int _write(int file, char *ptr, int len)
 }
 }
 
+
+enum class STATE : uint8_t  { INIT, GO_UP, GO_DOWN  };
+
+STATE state{STATE::INIT};
+
+void init()
+{
+    uint16_t adcValue = read_adc_naiive(0);
+
+    if(adcValue < 150)
+    {
+        state = STATE::GO_UP;
+    }
+}
+
+void goUp()
+{
+
+
+}
+
+void goDown()
+{
+
+}
+
+
 /* milliseconds since boot */
 volatile uint32_t system_millis;
 
@@ -59,6 +87,79 @@ uint32_t mtime(void)
 {
   return system_millis;
 }
+
+void tim_setup(void)
+{
+	/* Enable TIM1 clock. */
+	rcc_periph_clock_enable(RCC_TIM1);
+
+	/* Enable GPIOA, GPIOB and Alternate Function clocks. */
+	rcc_periph_clock_enable(RCC_AFIO);
+
+	/*
+	 * Set TIM1 channel output pins to
+	 * 'output alternate function push-pull'.
+	 */
+	gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ,
+		      GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO_TIM1_CH2 );
+
+	
+
+	/* Reset TIM1 peripheral. */
+	rcc_periph_reset_pulse(RST_TIM1);
+
+	/* Timer global mode:
+	 * - No divider
+	 * - Alignment edge
+	 * - Direction up
+	 */
+	timer_set_mode(TIM1, TIM_CR1_CKD_CK_INT,
+		       TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
+
+	/* Reset prescaler value. */
+	timer_set_prescaler(TIM1, 0);
+
+	/* Reset repetition counter value. */
+	timer_set_repetition_counter(TIM1, 0);
+
+	/* Enable preload. */
+	timer_enable_preload(TIM1);
+
+	/* Continuous mode. */
+	timer_continuous_mode(TIM1);
+
+	/* Period (20Hz). */
+	timer_set_period(TIM1, 24000000 / 20);
+
+	/* Configure break and deadtime. */
+	timer_set_deadtime(TIM1, 10);
+	timer_set_enabled_off_state_in_idle_mode(TIM1);
+	timer_set_enabled_off_state_in_run_mode(TIM1);
+	timer_disable_break(TIM1);
+	timer_set_break_polarity_high(TIM1);
+	timer_disable_break_automatic_output(TIM1);
+	timer_set_break_lock(TIM1, TIM_BDTR_LOCK_OFF);
+
+	
+
+	/* ARR reload enable. */
+	timer_enable_preload(TIM1);
+
+	/*
+	 * Enable preload of complementary channel configurations and
+	 * update on COM event.
+	 */
+	timer_enable_preload_complementry_enable_bits(TIM1);
+
+	/* Enable outputs in the break subsystem. */
+	timer_enable_break_main_output(TIM1);
+
+	/* Counter enable. */
+	timer_enable_counter(TIM1);
+
+	
+}
+
 
 void adc_setup(void)
 {
@@ -96,6 +197,8 @@ uint16_t read_adc_naiive(uint8_t channel)
   uint16_t reg16 = adc_read_regular(ADC1);
   return reg16;
 }
+
+
 
 
 /* Set STM32 to 24 MHz. */
@@ -160,7 +263,7 @@ int main( void )
   gpio_setup();
   user_button_enable();
   adc_setup();
-
+  tim_setup();
 
   char buffer[64];
 
@@ -182,6 +285,26 @@ int main( void )
         msleep(1000);
     }
 
+    goDown();
+
+    while(true)
+    {
+        switch (state)
+        {
+            case STATE::INIT:
+                init();
+                break;
+
+            case STATE::GO_UP:
+                goUp();
+                break;
+
+            case STATE::GO_DOWN:
+                goDown();
+                break;
+
+        }
+    }
 
   return 0;
 }
