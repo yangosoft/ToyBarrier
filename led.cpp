@@ -154,12 +154,27 @@ void pwm_setup()
     gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO_TIM1_CH1);
     rcc_periph_clock_enable(RCC_TIM1);
     timer_set_mode(TIM1, TIM_CR1_CKD_CK_INT, TIM_CR1_CMS_CENTER_1, TIM_CR1_DIR_UP);
-    timer_set_oc_mode(TIM1, TIM_OC1, TIM_OCM_PWM2);
-    timer_enable_oc_output(TIM1, TIM_OC1);
-    timer_enable_break_main_output(TIM1);
-    timer_set_oc_value(TIM1, TIM_OC1, 200);
-    timer_set_period(TIM1, 1000);
-    timer_enable_counter(TIM1);
+
+    timer_reset(TIM1);
+    // Divide counter by 16 to scale it down from 24mhz clock speed to a 1500000Hz rate.
+    timer_set_prescaler(TIM1, 16);
+    // Set timer period by solving:
+    //   PWM frequency = timer clock speed / timer period
+    timer_set_period(TIM1, 1500000/15);
+    timer_enable_break_main_output(TIM1);  // Must be called for advanced timers
+                                         // like this one.  Unclear what this
+                                         // does or why it's necessary but the
+                                         // libopencm3 timer and STM32 docs
+                                         // mention it.
+
+     timer_enable_oc_output(TIM1, TIM_OC1);
+     // Set the PWM mode to 2 which means the PWM signal is low when
+     // the timer value is below the threshold and high above it.
+     timer_set_oc_mode(TIM1, TIM_OC1, TIM_OCM_PWM1);
+
+     timer_set_oc_value(TIM1, TIM_OC1, 1500000/15); 
+     timer_enable_preload(TIM1);
+     timer_enable_counter(TIM1)
 }
 
 int main( void )
