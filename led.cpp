@@ -105,10 +105,10 @@ void clock_setup(void)
     rcc_periph_clock_enable(RCC_GPIOA);
     rcc_periph_clock_enable(RCC_ADC1);
     rcc_periph_clock_enable(RCC_USART1);
+    rcc_clock_setup_in_hsi_out_48mhz();
+    /* clock rate / 48000 to get 1mS interrupt rate */
+    systick_set_reload(48000); //24MHz / 1000 -> 24000
 
-    rcc_clock_setup_in_hsi_out_24mhz();
-    /* clock rate / 168000 to get 1mS interrupt rate */
-    systick_set_reload(24000); //24MHz / 1000 -> 24000
     systick_set_clocksource(STK_CSR_CLKSOURCE_AHB);
     systick_counter_enable();
 
@@ -156,11 +156,11 @@ void pwm_setup()
     timer_set_mode(TIM1, TIM_CR1_CKD_CK_INT, TIM_CR1_CMS_CENTER_1, TIM_CR1_DIR_UP);
 
     timer_reset(TIM1);
-    // Divide counter by 16 to scale it down from 24mhz clock speed to a 1500000Hz rate.
-    timer_set_prescaler(TIM1, 16);
+    // Divide counter by 64 to scale it down from 48MHz clock speed to a 750000Hz rate.
+    timer_set_prescaler(TIM1, 64);
     // Set timer period by solving:
     //   PWM frequency = timer clock speed / timer period
-    timer_set_period(TIM1, 1500000/15);
+    timer_set_period(TIM1, 750000/50); //50Hz
     timer_enable_break_main_output(TIM1);  // Must be called for advanced timers
                                          // like this one.  Unclear what this
                                          // does or why it's necessary but the
@@ -172,7 +172,8 @@ void pwm_setup()
      // the timer value is below the threshold and high above it.
      timer_set_oc_mode(TIM1, TIM_OC1, TIM_OCM_PWM1);
 
-     timer_set_oc_value(TIM1, TIM_OC1, 1500000/15); 
+     // 1ms (-90º) -> 5% de 20ms, 1.5ms (0º) -> 7.5% , 2ms (90) -> 10%
+     timer_set_oc_value(TIM1, TIM_OC1, (750000 * 0.1) /50);
      timer_enable_preload(TIM1);
      timer_enable_counter(TIM1)
 }
@@ -186,13 +187,37 @@ int main( void )
 
     std::string s;
 
+    double i = 0.025f;
+    bool inc = true;
+
+
     while(1)
     {
-        gpio_toggle(GPIOB, GPIO1);
+	uint16_t w = (750000 * i)/50.0f;
+        timer_set_oc_value(TIM1, TIM_OC1, w );
+
+	gpio_toggle(GPIOB, GPIO1);
         uint16_t adcValue = read_adc_naiive(0);
         s = std::to_string(adcValue);
         printf("%d\n",adcValue);
-        msleep(1000);
+
+	 if(inc)
+        {
+            i = i + 0.001;
+        }else
+        {
+            i = i - 0.001;
+        }
+        if (i > 0.10)
+        {
+            inc = false;
+        }
+        if (i < 0.025)
+        {
+            inc = true;
+        }
+
+	msleep(1000);
     }
 
     return 0;
